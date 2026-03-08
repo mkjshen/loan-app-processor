@@ -48,6 +48,9 @@ function start(): void {
   });
 }
 
-start();
+// Only start the HTTP server when run directly (not when imported by tests)
+if (require.main === module) {
+  start();
+}
 
 export default app;
