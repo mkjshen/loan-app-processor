@@ -92,6 +92,40 @@ node scripts/simulate_disbursement.js <application_id> [--mode success|failure|r
 
 ---
 
+## Design Decisions
+
+1. **Income Verification Tolerance** — Symmetric ±10%: `|documented - stated| / stated <= 0.10`. Null documented income → 0 pts.
+
+2. **Income Level** — Uses the lower of stated vs documented income to prevent inflated stated figures from passing the income level check.
+
+3. **Account Stability Nulls** — Missing bank data scores 50% (neutral), not 0. Missing docs ≠ a problem; flags for manual review instead of auto-deny.
+
+4. **DTI Scoring** — Continuous linear scale: `max(0, (1 - withdrawals/deposits) × 100)`. Preserves gradient vs binary pass/fail.
+
+5. **`partially_approved` State** — Added as a first-class status: `flagged_for_review → partially_approved → disbursement_queued → disbursed | disbursement_failed`. No existing transitions changed.
+
+6. **Retry vs Audit Trail** — `transaction_id` (external) is the idempotency key; same webhook twice → no-op. `retry_id` (internal uuid) is the audit key; every failure event gets its own record. Retries are not replays.
+
+7. **Disbursement Timeout** — Applications in `disbursement_queued` > 24h are escalated to `flagged_for_review` by a background job (runs every minute).
+
+8. **Scenario 4 Borderline** — Jane Doe's $4,500 loan scores 72.5 (income verification 30 + account stability 20 + employment 15 + DTI 7.5 + income level 0) → flagged for review.
+
+---
+
+## Tradeoffs
+
+- **Symmetric vs directional income tolerance** — A one-sided tolerance (only penalizing understatement) would be more permissive but would miss cases where documented income is suspiciously *above* stated (irregular income, data error). Symmetric catches both directions at the cost of occasionally flagging benign discrepancies.
+
+- **Conservative income for level check** — Using the lower of stated vs documented closes a gap where an applicant could pass the income level check on inflated stated figures even when docs show less. The cost is being stricter than stated income alone would be.
+
+- **Neutral nulls vs zero for missing bank data** — Scoring nulls as 0 would auto-deny applicants who simply haven't uploaded docs yet. Neutral (50%) + manual review is more permissive but avoids false denials. A bad actor could exploit this by omitting docs intentionally, but that risk is mitigated by the manual review step.
+
+- **Continuous DTI vs binary** — Binary pass/fail loses gradient information (0.25 and 0.74 would score the same). Continuous scoring is more accurate but harder to explain to applicants than a simple cutoff.
+
+- **Retry vs audit trail (product vs finance conflict)** — Product wants idempotent retries (same failure = same operation); Finance wants a distinct audit record per retry. Resolved by using orthogonal keys: `transaction_id` for idempotency, `retry_id` for audit. Each retry produces a new `retry_id` in the audit log while still being deduplicated by `transaction_id` if the same webhook arrives twice.
+
+---
+
 ## Tests
 
 ```bash
