@@ -108,8 +108,6 @@ node scripts/simulate_disbursement.js <application_id> [--mode success|failure|r
 
 7. **Disbursement Timeout** — Applications in `disbursement_queued` > 24h are escalated to `flagged_for_review` by a background job (runs every minute).
 
-8. **Scenario 4 Borderline** — Jane Doe's $4,500 loan scores 72.5 (income verification 30 + account stability 20 + employment 15 + DTI 7.5 + income level 0) → flagged for review.
-
 ---
 
 ## Tradeoffs
@@ -122,7 +120,7 @@ node scripts/simulate_disbursement.js <application_id> [--mode success|failure|r
 
 - **Continuous DTI vs binary** — Binary pass/fail loses gradient information (0.25 and 0.74 would score the same). Continuous scoring is more accurate but harder to explain to applicants than a simple cutoff.
 
-- **Retry vs audit trail (product vs finance conflict)** — Product wants idempotent retries (same failure = same operation); Finance wants a distinct audit record per retry. Resolved by using orthogonal keys: `transaction_id` for idempotency, `retry_id` for audit. Each retry produces a new `retry_id` in the audit log while still being deduplicated by `transaction_id` if the same webhook arrives twice.
+- **Retry vs audit trail (product vs finance conflict)** — Product wants idempotent retries; Finance wants a distinct audit record per retry. Resolved by using orthogonal keys: `transaction_id` for idempotency, `retry_id` for audit. Each retry produces a new `retry_id` in the audit log while still being deduplicated by `transaction_id` if the same webhook arrives twice.
 
 ---
 
